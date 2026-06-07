@@ -92,24 +92,68 @@ const cloud = await CheerpX.CloudDevice.create(
 );
 ```
 
-### Docker イメージから自分のイメージを作る
+### Docker イメージから自分のイメージを作る (✅ 実機検証済み)
 
-CheerpX は OCI を直接は食べないが、**Docker イメージ → 起動可能な ext2 ディスクイメージ**に
-変換するツールが WebVM (Leaning Technologies) 側に用意されている。`Dockerfile` で好きな
-パッケージを入れたイメージを作り、それを変換して `CloudDevice` で読み込めば、
-**任意の中身のブラウザ Linux** が作れる。
+CheerpX は OCI を直接は食べないが、**Dockerfile → 起動可能な ext2 ディスクイメージ**に
+変換して読み込める。`Dockerfile` で好きな中身を作り、`buildah` でビルド → `mkfs.ext2 -d` で
+ext2 化 → `HttpBytesDevice` で読み込めば、**任意の中身のブラウザ Linux** が作れる。
+
+本リポジトリの [`custom.html`](custom.html) がその起動例 (自作 ext2 を `HttpBytesDevice` で読む)。
 
 ```
-[Dockerfile / docker image]
-   ↓ WebVM のイメージ変換ツール (Dockerfile → ext2)
-[xxx.ext2 ディスクイメージ]
-   ↓ 自前の静的ホスト / オブジェクトストレージに置く
-[CheerpX.CloudDevice.create("https://.../xxx.ext2")]
+[Dockerfile (i386 必須)]
+   ↓ buildah build --platform linux/i386
+[コンテナイメージ]
+   ↓ buildah mount + mkfs.ext2 -d (ディレクトリごと ext2 化)
+[custom.ext2]
+   ↓ 同一オリジンに置く (serve.mjs は Range / Last-Modified 対応済み)
+[CheerpX.HttpBytesDevice.create("/custom.ext2")]
 ```
 
-- 例: Ubuntu ベースの Dockerfile を書いて変換すれば、ブラウザの中で Ubuntu が動く
-- 詳細は WebVM のドキュメント / リポジトリ (イメージ作成ツール) を参照
-- 自前ホストに置く場合も COOP/COEP / CORS と、Range リクエスト対応が必要
+#### 実際に動かした手順 (Linux + buildah 環境で)
+
+```sh
+# 1) Dockerfile (★ ベースは 32bit x86 = i386 必須)
+cat > Dockerfile <<'EOF'
+FROM --platform=linux/i386 docker.io/i386/debian:buster
+ARG DEBIAN_FRONTEND=noninteractive
+RUN echo "deb [trusted=yes] http://archive.debian.org/debian buster main" > /etc/apt/sources.list
+RUN apt-get update && apt-get -y install curl figlet
+RUN echo "Built via Dockerfile on $(date -u)" > /etc/cheerpx-custom-marker.txt
+EOF
+
+# 2) ビルド (x86_64 ホストでも i386 はネイティブ実行できる)
+sudo apt-get install -y buildah        # 必要なら
+buildah build -f Dockerfile --dns=none --platform linux/i386 -t cheerpximage
+
+# 3) ext2 化 (e2fsprogs 1.43+ の mkfs.ext2 -d が必要)
+buildah unshare bash -c '
+  buildah from --name c cheerpximage
+  mnt=$(buildah mount c)
+  mkfs.ext2 -b 4096 -d "$mnt" custom.ext2 600M
+  buildah umount c && buildah rm c'
+
+# 4) 中身検証 (マウントせず確認)
+debugfs -R "cat /etc/cheerpx-custom-marker.txt" custom.ext2
+
+# 5) custom.ext2 を本リポジトリ直下に置き、serve.mjs 経由で custom.html を開く
+```
+
+#### 検証結果 (どちらも実機でブラウザ起動を確認)
+
+| ベース | 結果 | 備考 |
+|---|---|---|
+| **`i386/debian:buster`** | ✅ 起動 + `apt` で curl/figlet 追加も成功 | apt は `archive.debian.org` で素直に通る。**パッケージを足すなら Debian が扱いやすい** |
+| **`i386/ubuntu:bionic`** (18.04) | ✅ 起動 (ベース userland のみ) | Ubuntu の **i386 は 18.04 が上限**。bionic は EOL で apt アーカイブ構成が崩れており (`old-releases` の i386 パスが 404)、パッケージ追加は一手間 |
+
+> **i386 の壁**: CheerpX は 32bit x86 専用。Ubuntu は 18.04 以降 i386 を廃止したので、
+> ブラウザで動かせる Ubuntu は実質 18.04 まで。Raspbian など **ARM 系は不可** (別アーキ)。
+
+#### 注意
+- `custom.ext2` は大きい (例 600M) ので **`.gitignore` 済み** (リポジトリには入れない)
+- 自前ホストに置く場合、`HttpBytesDevice` は **Range + `Last-Modified`/`ETag`** を要求する
+  (`serve.mjs` は対応済み)。別オリジンに置くなら COOP/COEP / CORS も必要
+- 参考: [Custom disk images (CheerpX Docs)](https://cheerpx.io/docs/guides/custom-images)
 
 ## ネットワークを使う (オプション)
 
@@ -136,9 +180,13 @@ const TS_CONTROL_URL = "";     // Headscale 等の自前コントロールプレ
 ```
 cheerpx-base-demo/
 ├ index.html   ← CheerpX を CDN から読み込み Debian を起動。ネットは既定オフ
-├ serve.mjs    ← COOP/COEP 付きの最小静的サーバ (Node 標準のみ・依存なし)
+├ custom.html  ← 自作 ext2 (custom.ext2) を HttpBytesDevice で起動する例
+├ serve.mjs    ← COOP/COEP + Range + Last-Modified/ETag 対応の静的サーバ (依存なし)
 └ README.md    ← このファイル
 ```
+
+> `custom.ext2` (自作イメージ本体) は大きいので含めない (`.gitignore`)。
+> 上記「Docker イメージから作る」手順で各自生成して直下に置く。
 
 ## バージョン / 出典
 
