@@ -247,7 +247,7 @@ sudo tar -C /mnt -c . | docker import -c 'CMD ["/bin/bash"]' - mycustom:latest
 | アーキ | **i386 のまま** (x86_64 ホストでは動くが ARM は別途エミュ要) |
 
 > **本質**: Docker イメージ / ext2 / Firecracker の rootfs(ext4) / c2w の同梱 rootfs は、
-> すべて「**rootfs を別の入れ物に詰めただけ**」。`tar` を共通通貨に相互変換できる。
+> すべて「**rootfs を別の入れ物に詰めただけ**」。`tar` を介して相互変換できる。
 > 今回の Docker→ext2→ブラウザ起動も、その詰め替えの一例にすぎない。
 
 ## ネットワークを使う (オプション)
