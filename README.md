@@ -45,6 +45,22 @@ PRETTY_NAME="Debian GNU/Linux 10 (buster)"
   └ /bin/bash (x86) を JIT 実行 → <pre> をコンソールとして表示
 ```
 
+後者をシーケンスで表すとこうなります。
+
+```mermaid
+sequenceDiagram
+    participant B as ブラウザ
+    participant S as serve.mjs
+    participant C as CDN (CheerpX)
+    participant D as ext2 配信元
+    B->>S: GET /index.html (COOP/COEP 付与)
+    B->>C: import cx.esm.js
+    B->>D: ext2 ブロックを Range で逐次取得
+    Note over B: x86 を JIT で wasm に変換して実行
+    B->>B: /bin/bash 起動 → コンソール表示
+    Note over B: 書き込みは IndexedDB に overlay
+```
+
 ## 前提
 
 | ツール | 用途 | 確認版 |
@@ -115,6 +131,15 @@ ext2 化 → `HttpBytesDevice` で読み込めば、**任意の中身のブラ�
 [custom.ext2]
    ↓ 同一オリジンに置く (serve.mjs は Range / Last-Modified 対応済み)
 [CheerpX.HttpBytesDevice.create("/custom.ext2")]
+```
+
+```mermaid
+flowchart LR
+    DF[Dockerfile] -->|buildah| IMG[OCI イメージ]
+    IMG -->|mkfs.ext2 -d| EXT2[custom.ext2]
+    EXT2 -->|CheerpX HttpBytesDevice| BROWSER[ブラウザで起動]
+    EXT2 -->|mount + tar + import| OCI2[OCI イメージ]
+    OCI2 -->|podman / docker run| RUN[コンテナで起動]
 ```
 
 #### 実際に動かした手順 (Linux + buildah 環境で)
