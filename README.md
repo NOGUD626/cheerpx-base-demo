@@ -283,6 +283,13 @@ cheerpx-base-demo/
 > `custom.ext2` (自作イメージ本体) は大きいので含めない (`.gitignore`)。
 > 上記「Docker イメージから作る」手順で各自生成して直下に置く。
 
+## 解説記事(doc/)
+
+このデモの背景・検証過程をまとめた記事を `doc/` に置いています。
+
+- [CheerpX でブラウザの中だけで x86 Debian/Ubuntu を動かす](doc/cheerpx-browser-x86-linux.md)(スクショ付き)
+- [ext2 も Docker イメージも中身は同じ rootfs — tar を共通通貨に相互変換する](doc/rootfs-tar-interconversion.md)
+
 ## バージョン / 出典
 
 - CheerpX: `https://cxrtnc.leaningtech.com/1.2.8/cx.esm.js` (固定。更新あり)
