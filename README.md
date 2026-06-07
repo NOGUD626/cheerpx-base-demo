@@ -162,6 +162,44 @@ debugfs -R "cat /etc/cheerpx-custom-marker.txt" custom.ext2
   (`serve.mjs` は対応済み)。別オリジンに置くなら COOP/COEP / CORS も必要
 - 参考: [Custom disk images (CheerpX Docs)](https://cheerpx.io/docs/guides/custom-images)
 
+## ビルド済みイメージの保全 / 入手 (Releases)
+
+**ベースイメージ (Docker Hub の `i386/debian` ・ `i386/ubuntu`) や apt アーカイブは
+将来 pull 不能になりうる**。そうなると Dockerfile からの**再ビルドができなくなる**。
+そこで **ビルド済みの ext2 を gzip 圧縮して GitHub Releases に保全**してある
+(ext2 は中身がスカスカなので 600M → 数十 MB に圧縮できる)。これは完成品なので、
+**ベースイメージが消えても「動かす」のは無傷**(再ビルド不要)。
+
+Releases: <https://github.com/NOGUD626/cheerpx-base-demo/releases/tag/images-v1>
+
+| アセット | 中身 | 圧縮後 |
+|---|---|---|
+| `custom-debian-buster-i386.ext2.gz` | Debian 10 buster (i386) + curl/figlet + marker | 69M |
+| `custom-ubuntu-1804-i386.ext2.gz` | Ubuntu 18.04 LTS (i386) + marker | 26M |
+
+### 入手して起動
+
+```sh
+# gh CLI で取得 (または Releases ページから直接 DL)
+gh release download images-v1 -R NOGUD626/cheerpx-base-demo
+
+# このブランチ (ubuntu-18.04) は Ubuntu を使う
+gunzip -c custom-ubuntu-1804-i386.ext2.gz > custom.ext2
+# (main の Debian を使う場合: gunzip -c custom-debian-buster-i386.ext2.gz > custom.ext2)
+
+node serve.mjs   # → http://localhost:8080/custom.html
+```
+
+### sha256 (改ざん検知用)
+
+```
+e78ab65f4769fdc79e900adeedb1b73fb36658e3af097068b2f6f01a69f8bdaa  custom-debian-buster-i386.ext2.gz
+51066c603bc8bca7c9520bde9e42242a0a8e505f742ef6f5b982e46e29ced1d0  custom-ubuntu-1804-i386.ext2.gz
+```
+
+> なお `main` / `ubuntu-18.04` ブランチは削除・force-push 禁止で**保護**してある
+> (誤削除防止)。通常の push は可能。
+
 ## ネットワークを使う (オプション)
 
 ネット (`apt` 等) を通すには、`index.html` 冒頭で有効化する。CheerpX のゲストネットは
