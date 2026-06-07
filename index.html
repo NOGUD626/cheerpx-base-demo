@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CheerpX 検証 — ブラウザで x86 Debian</title>
+    <style>
+      :root { --bg: #1e1e1e; --bar: #2d2d2d; --accent: #d9534f; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; background: #11161c; color: #e6e6e6; }
+      .app { display: flex; flex-direction: column; height: 100vh; }
+      .bar {
+        background: var(--bar); flex: none; padding: 8px 14px; font-size: 13px;
+        display: flex; align-items: center; gap: 8px; font-family: Menlo, monospace;
+      }
+      .bar .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+      .bar .red { background: #ff5f56; } .bar .yellow { background: #ffbd2e; } .bar .green { background: #27c93f; }
+      .bar .label { margin-left: 8px; }
+      .bar .status { margin-left: auto; color: #ffbd2e; }
+      .bar .status.ready { color: #27c93f; }
+      /* CheerpX のコンソールを貼り付ける要素。フォーカスでキー入力を受ける。 */
+      #console {
+        flex: 1; min-height: 0; margin: 0; padding: 8px 10px; overflow: auto;
+        background: var(--bg); color: #e6e6e6;
+        font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 14px;
+        white-space: pre-wrap; outline: none;
+      }
+      #overlay {
+        position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px;
+        background: rgba(17, 22, 28, 0.97); text-align: center; padding: 24px;
+        font-family: Menlo, monospace; transition: opacity .4s ease;
+      }
+      #overlay.hidden { opacity: 0; pointer-events: none; }
+      .spinner {
+        width: 44px; height: 44px; border-radius: 50%;
+        border: 4px solid rgba(255,255,255,.15); border-top-color: #27c93f;
+        animation: spin .9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #overlay .title { font-size: 15px; font-weight: 600; }
+      #overlay .msg { font-size: 13px; color: #9aa0a6; max-width: 36em; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="bar">
+        <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+        <span class="label">CheerpX: x86 Debian on WebAssembly</span>
+        <a id="login" href="#" target="_blank" rel="noopener"
+           style="display:none; margin-left:16px; color:#9fd0ff;">🔑 Tailscale にログイン</a>
+        <span class="net" id="net" style="margin-left:16px; color:#8895a7;"></span>
+        <span class="status" id="status">起動中…</span>
+      </div>
+      <pre id="console" tabindex="0"></pre>
+    </div>
+
+    <div id="overlay">
+      <div class="spinner"></div>
+      <div class="title" id="ov-title">CheerpX を初期化中…</div>
+      <div class="msg" id="ov-msg">
+        Debian のディスクイメージをストリーム取得しています。<br>
+        初回はネットワーク次第で時間がかかります。コンソールをクリックしてキー入力できます。
+      </div>
+    </div>
+
+    <script type="module">
+      // CheerpX 本体 (Leaning Technologies の CDN)。バージョンは固定。
+      // 参考: https://cheerpx.io/docs/getting-started
+      import * as CheerpX from "https://cxrtnc.leaningtech.com/1.2.8/cx.esm.js";
+
+      // ===== ネットワーク設定 (Tailscale) =====
+      // CheerpX のゲストネットは Tailscale 経由。下を編集して使う。
+      //  - ENABLE_NETWORK = false なら従来通りネット無し (オフライン検証)
+      //  - TS_AUTHKEY に事前認証キーを入れると自動でログイン (login.tailscale.com/admin/settings/keys)
+      //  - TS_AUTHKEY を空にすると対話ログイン (バーに出るリンクをクリックして認証)
+      //  - TS_CONTROL_URL は独自コントロールプレーン (Headscale 等) を使う場合のみ。空=公式
+      const ENABLE_NETWORK = false;   // base-demo は既定オフ (Debian が起動するだけ)。ネットを使うなら true
+      const TS_AUTHKEY = "";          // 例: "tskey-auth-xxxxxxxx"
+      const TS_CONTROL_URL = "";      // 例: "https://controlplane.tailscale.com/"
+
+      const statusEl = document.getElementById("status");
+      const netEl = document.getElementById("net");
+      const loginEl = document.getElementById("login");
+      const overlay = document.getElementById("overlay");
+      const ovTitle = document.getElementById("ov-title");
+      const ovMsg = document.getElementById("ov-msg");
+      const consoleEl = document.getElementById("console");
+
+      function setStatus(text, ready) {
+        statusEl.textContent = text;
+        statusEl.classList.toggle("ready", !!ready);
+      }
+      function fail(e) {
+        console.error(e);
+        ovTitle.textContent = "初期化に失敗しました";
+        ovMsg.innerHTML =
+          "ブラウザのコンソール (DevTools) を確認してください。<br>" +
+          "よくある原因: COOP/COEP ヘッダ未設定 (serve.mjs 経由で開く)、CDN 到達不可、" +
+          "SharedArrayBuffer 無効。<br><br><code>" + (e && e.message ? e.message : e) + "</code>";
+        setStatus("● 失敗");
+      }
+
+      (async () => {
+        try {
+          // SharedArrayBuffer が無い = cross-origin isolation 未達 → 必ず serve.mjs 経由で開く
+          if (!self.crossOriginIsolated) {
+            throw new Error(
+              "crossOriginIsolated=false。COOP/COEP ヘッダが無い状態で開いています。" +
+              "`node serve.mjs` を起動して http://localhost:8080 から開いてください。"
+            );
+          }
+
+          ovTitle.textContent = "ディスクイメージを準備中…";
+          // ① リモートの読み取り専用 Debian イメージ (WebVM 公式配布)
+          const cloud = await CheerpX.CloudDevice.create(
+            "wss://disks.webvm.io/debian_large_20230522_5044875331.ext2"
+          );
+          // ② ブラウザ内 (IndexedDB) の書き込み層 → ③ 重ねて読み書き可能な overlay に
+          const idb = await CheerpX.IDBDevice.create("cheerpx-lab-block");
+          const overlayDev = await CheerpX.OverlayDevice.create(cloud, idb);
+          // /dev 用の特殊デバイス
+          const dataDev = await CheerpX.DataDevice.create();
+
+          ovTitle.textContent = "Linux を起動中…";
+
+          // ネットワーク設定 (Tailscale)。ENABLE_NETWORK=false なら付けない。
+          const createOpts = {
+            mounts: [
+              { type: "ext2", path: "/", dev: overlayDev },
+              { type: "dir",  path: "/data", dev: dataDev },
+              { type: "devs", path: "/dev" },
+            ],
+          };
+          if (ENABLE_NETWORK) {
+            const ni = {
+              // 状態変化を画面に表示 (NeedsLogin → Running 等)
+              stateUpdateCb: (state) => {
+                netEl.textContent = "net: " + state;
+                if (String(state).toLowerCase().includes("running")) {
+                  netEl.style.color = "#27c93f";
+                  loginEl.style.display = "none";
+                }
+              },
+              netmapUpdateCb: (map) => { console.log("netmap update", map); },
+              // 対話ログイン時: 認証 URL をバーのリンクに出す
+              loginUrlCb: (url) => {
+                loginEl.href = url;
+                loginEl.style.display = "";
+                netEl.textContent = "net: ログイン待ち (← リンクをクリック)";
+                console.log("Tailscale login URL:", url);
+              },
+            };
+            if (TS_AUTHKEY) ni.authKey = TS_AUTHKEY;
+            if (TS_CONTROL_URL) ni.controlUrl = TS_CONTROL_URL;
+            createOpts.networkInterface = ni;
+          }
+
+          const cx = await CheerpX.Linux.create(createOpts);
+
+          // CheerpX のコンソールを <pre> に接続 (フォーカスでキー入力を受ける)
+          cx.setConsole(consoleEl);
+
+          overlay.classList.add("hidden");
+          setStatus("● 実行中", true);
+          consoleEl.focus();
+
+          // 対話ログイン (authKey 未設定時)。シェルはブロックせず並行で進める。
+          if (ENABLE_NETWORK && !TS_AUTHKEY) {
+            cx.networkLogin().catch((e) => console.error("networkLogin error", e));
+          }
+
+          // ログインシェルを起動。終了したら知らせる。
+          const code = await cx.run("/bin/bash", ["--login"], {
+            env: ["HOME=/root", "USER=root", "SHELL=/bin/bash", "TERM=xterm", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+            cwd: "/root",
+            uid: 0,
+            gid: 0,
+          });
+          setStatus("● シェル終了 (code " + code + ")");
+        } catch (e) {
+          fail(e);
+        }
+      })();
+    </script>
+  </body>
+</html>
