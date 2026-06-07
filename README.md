@@ -99,6 +99,10 @@ CheerpX は OCI を直接は食べないが、**Dockerfile → 起動可能な e
 ext2 化 → `HttpBytesDevice` で読み込めば、**任意の中身のブラウザ Linux** が作れる。
 
 本リポジトリの [`custom.html`](custom.html) がその起動例 (自作 ext2 を `HttpBytesDevice` で読む)。
+ビルド用の [`Dockerfile`](Dockerfile) も同梱 (main は Debian 版)。
+
+> **ブランチ**: `main` = Debian buster 版 / **`ubuntu-18.04`** = Ubuntu 18.04 (i386) 版。
+> ブランチごとに `Dockerfile` と `custom.html` (ラベル/IDB キー) が切り替わる。
 
 ```
 [Dockerfile (i386 必須)]
