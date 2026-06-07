@@ -197,6 +197,34 @@ e78ab65f4769fdc79e900adeedb1b73fb36658e3af097068b2f6f01a69f8bdaa  custom-debian-
 > なお `main` / `ubuntu-18.04` ブランチは削除・force-push 禁止で**保護**してある
 > (誤削除防止)。通常の push は可能。
 
+## ext2 を Docker イメージとして使い直す (逆変換)
+
+ext2 も Docker イメージも **中身は同じ rootfs (`/` 以下のファイル一式)** で入れ物が違うだけ
+なので、**ext2 → Docker イメージの逆変換**もできる。本デモの `custom.ext2` を Docker に
+戻して使う、といったことが可能。
+
+```sh
+# ext2 をループマウントして中身を tar → docker import
+sudo mount -o loop custom.ext2 /mnt
+sudo tar -C /mnt -c . | docker import - mycustom:latest
+docker run --rm -it mycustom:latest /bin/bash     # i386 イメージとして動く
+
+# 起動コマンド等のメタ情報も付けたい場合
+sudo tar -C /mnt -c . | docker import -c 'CMD ["/bin/bash"]' - mycustom:latest
+```
+
+### 注意 (rootfs には入っていないもの)
+
+| 失われるもの | 補い方 |
+|---|---|
+| `CMD` / `ENTRYPOINT` / `ENV` / `WORKDIR` / `EXPOSE` | `docker import -c '...'` で付与、または `FROM mycustom` の Dockerfile で再指定 |
+| レイヤー履歴 | 失われる (1 枚に潰れた single-layer になる) |
+| アーキ | **i386 のまま** (x86_64 ホストでは動くが ARM は別途エミュ要) |
+
+> **本質**: Docker イメージ / ext2 / Firecracker の rootfs(ext4) / c2w の同梱 rootfs は、
+> すべて「**rootfs を別の入れ物に詰めただけ**」。`tar` を共通通貨に相互変換できる。
+> 今回の Docker→ext2→ブラウザ起動も、その詰め替えの一例にすぎない。
+
 ## ネットワークを使う (オプション)
 
 ネット (`apt` 等) を通すには、`index.html` 冒頭で有効化する。CheerpX のゲストネットは
