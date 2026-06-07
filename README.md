@@ -1,5 +1,8 @@
 # cheerpx-base-demo — ブラウザで x86 Linux を動かす最小デモ
 
+> 📌 **このブランチ `ubuntu-18.04` は Ubuntu 18.04 (i386) 版**。`custom.html` と `Dockerfile`
+> が Ubuntu 向けになっている。Debian buster 版は `main` ブランチを参照。
+
 [CheerpX](https://cheerpx.io/) (Leaning Technologies 製) を使うと、サーバや Docker、
 ネイティブアプリ無しで、**ブラウザの中だけで x86 の Linux (Debian)** が動く。
 

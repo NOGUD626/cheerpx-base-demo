@@ -26,7 +26,7 @@
     <div class="app">
       <div class="bar">
         <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
-        <span class="label">CheerpX: 自作 Dockerfile → ext2 (i386 Debian buster + curl/figlet)</span>
+        <span class="label">CheerpX: 自作 Dockerfile → ext2 (i386 Ubuntu 18.04 LTS)</span>
         <span class="status" id="status">起動中…</span>
       </div>
       <pre id="console" tabindex="0"></pre>
@@ -37,8 +37,8 @@
       <div class="msg" id="ov-msg">
         VPS で <code>buildah</code> + <code>mkfs.ext2 -d</code> で作った 600M の ext2 を、
         HttpBytesDevice で Range 取得しています。<br>
-        起動したら <code>cat /etc/cheerpx-custom-marker.txt</code> や <code>figlet hi</code> を試してください。
-        (Ubuntu 18.04 版は <code>ubuntu-18.04</code> ブランチ)
+        起動したら <code>cat /etc/os-release</code> や <code>cat /etc/cheerpx-custom-marker.txt</code> を試してください。
+        (Debian 版は <code>main</code> ブランチ)
       </div>
     </div>
 
@@ -67,7 +67,7 @@
           // 書き込みは IndexedDB に overlay
           const overlayDev = await CheerpX.OverlayDevice.create(
             block,
-            await CheerpX.IDBDevice.create("cheerpx-custom-debian")
+            await CheerpX.IDBDevice.create("cheerpx-custom-ubuntu1804")
           );
           const dataDev = await CheerpX.DataDevice.create();
 
